@@ -3,6 +3,8 @@ name: 'Test and Deploy Resume'
 on:
   push:
     branches: [ "main" ]
+  repository_dispatch:
+    types: [frontend_updated] # This matches the event_type from frontend
 
 permissions:
   id-token: write # Required for requesting the JWT (OIDC)
@@ -10,44 +12,57 @@ permissions:
 
 jobs:
   test:
-    name: 'Python Unit Tests'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      name: 'Python Unit Tests'
+      runs-on: ubuntu-latest
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+          with:
+            path: backend
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
+        # Update your run command to point to the new path
+        - name: Install dependencies
+          run: pip install -r backend/tests/requirements.txt
 
-      - name: Install dependencies
-        run: |
-          pip install -r tests/requirements.txt
-
-      - name: Run Tests
-        run: |
-          pytest tests/test_lambda.py
+        - name: Run Tests
+          env:
+            PYTHONPATH: ${{ github.workspace }}/backend
+          run: |
+            cd backend
+            pytest tests/test_lambda.py
 
   terraform:
-    name: 'Terraform Deploy'
-    needs: test # Only runs if Python tests pass
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      name: 'Terraform Deploy'
+      needs: test 
+      runs-on: ubuntu-latest
+      steps:
+        # 1. Checkout the Backend (where Terraform lives) into a 'backend' folder
+        - name: Checkout Backend
+          uses: actions/checkout@v4
+          with:
+            path: backend
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::877231425838:role/cloudresumechallenge-devops
-          aws-region: us-east-1 # Change to your region
+        # 2. Checkout the Frontend (where index.html lives) into a 'frontend' folder
+        - name: Checkout Frontend
+          uses: actions/checkout@v4
+          with:
+            repository: dvalve27/cloudresumechallenge-frontend
+            path: frontend
+            ref: main # Ensures you always get the latest code
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        - name: Configure AWS Credentials
+          uses: aws-actions/configure-aws-credentials@v4
+          with:
+            role-to-assume: arn:aws:iam::877231425838:role/cloudresumechallenge-devops
+            aws-region: us-east-1
 
-      - name: Terraform Init
-        run: terraform init
+        - name: Setup Terraform
+          uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve -input=false
+        # 3. Move into the backend/terraform directory and run apply
+        - name: Terraform Init
+          run: terraform -chdir=backend/terraform init
+
+        - name: Terraform Apply
+          # We tell Terraform the frontend is ../../frontend relative to the terraform folder
+          run: terraform -chdir=backend/terraform apply -auto-approve -var="frontend_path=../../frontend"

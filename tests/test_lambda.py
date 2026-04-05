@@ -1,9 +1,9 @@
 import json
+import sys
 import os
 import boto3
 import pytest
 from moto import mock_aws
-from terraform.lambda_function import lambda_handler
 
 @pytest.fixture
 def aws_credentials():
@@ -30,15 +30,16 @@ def dynamodb_table(aws_credentials):
         table.put_item(Item={"id": "counter", "hits": 0})
         yield table
 
+
 def test_lambda_handler_updates_counter(dynamodb_table):
     """Test if the lambda correctly increments the hits in DynamoDB."""
-    # Define a mock API Gateway event
+    from terraform.lambda_function import lambda_handler  # Import here to delay execution
     event = {}
     context = {}
 
     # Call the lambda handler
     response = lambda_handler(event, context)
-    
+
     # Parse the body
     body = json.loads(response["body"])
 
@@ -47,15 +48,17 @@ def test_lambda_handler_updates_counter(dynamodb_table):
     assert body["hits"] == "1"
     assert "Access-Control-Allow-Origin" in response["headers"]
 
+
 def test_lambda_handler_increments_multiple_times(dynamodb_table):
     """Test if multiple calls continue to increment the same counter."""
+    from terraform.lambda_function import lambda_handler  # Import here to delay execution
     event = {}
     context = {}
 
     # Call twice
     lambda_handler(event, context)
     response = lambda_handler(event, context)
-    
+
     body = json.loads(response["body"])
 
     assert body["hits"] == "2"
