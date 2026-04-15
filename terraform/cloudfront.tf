@@ -51,3 +51,16 @@ resource "aws_route53_record" "www" {
     evaluate_target_health = false
   }
 }
+
+resource "terraform_data" "invalidate_cache" {
+  # Trigger this whenever your main frontend files are updated in S3
+  triggers_replace = [
+    aws_s3_object.index.etag,
+    aws_s3_object.style.etag
+  ]
+
+  provisioner "local-exec" {
+    # This command tells CloudFront to dump its cache for all files (/*)
+    command = "aws cloudfront create-invalidation --distribution-id ${aws_cloudfront_distribution.s3_distribution.id} --paths '/*'"
+  }
+}
